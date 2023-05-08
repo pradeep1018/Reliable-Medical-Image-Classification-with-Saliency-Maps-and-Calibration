@@ -7,9 +7,14 @@ import argparse
 from dataset import CheXpertData, get_data_medmnist
 from train import Trainer
 from utils import str_to_bool
+import numpy as np
 
 def main(args):
-    torch.manual_seed(0)
+    SEED = 123
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
     if args.data == 'chexpert':
         train_csv = 'CheXpert-v1.0-small/train.csv'
@@ -41,7 +46,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--epochs', default=15, type=int)
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--data', default='chexpert', type=str)
     parser.add_argument('--training_type', default='single-stage', type=str)
     parser.add_argument('--wceloss', default='True', type=str)

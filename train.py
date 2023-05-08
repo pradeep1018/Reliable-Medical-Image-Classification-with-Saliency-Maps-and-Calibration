@@ -9,17 +9,27 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from captum.attr import LayerGradCam, LayerAttribution, LRP
 from tqdm import tqdm, trange
 from torchvision.models import densenet121
+from libauc.models import densenet121 as DenseNet121
+from libauc.metrics import auc_roc_score
 import torchvision.models as models
 import torch.utils.model_zoo as model_zoo
 import datetime
 import pytz
 
 from losses import ClassDistinctivenessLoss, SpatialCoherenceConv, sigmoid_focal_loss
-from libauc.losses import AUCMLoss
+from libauc.losses import AUCM_MultiLabel
 from libauc.optimizers import PESG
 from metrics import AUC
 from utils import EarlyStopping
-
+def decf(epoch):
+    if epoch == 1:
+        return 10
+    elif epoch <= 10:
+        if epoch%2 == 0:
+            return 1
+        else:
+            return 5
+    return 2
 class Trainer:
     def __init__(self, args):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -45,10 +55,14 @@ class Trainer:
             self.model = densenet121(drop_rate=self.drop_rate)
             self.model.classifier = nn.Linear(1024, self.n_classes)
             self.model.load_state_dict(torch.load('model-weights/{}_wce.pt'.format(self.data)))
-        if self.training_type == 'dam':
+        if self.training_type == 'dam':# Deep AUC Maximization
             # self.model = densenet121(drop_rate=self.drop_rate)
-            self.model = densenet121(weights='DEFAULT', drop_rate=self.drop_rate)
+            # self.model = DenseNet121(pretrained=True, last_activation=None, activations='relu', num_classes=5)
+            self.model = densenet121(drop_rate=self.drop_rate)
             self.model.classifier = nn.Linear(1024, self.n_classes)
+            self.model.load_state_dict(torch.load('model-weights/{}_wce.pt'.format(self.data)))            
+            # self.model = densenet121(weights='DEFAULT', drop_rate=self.drop_rate)
+            # self.model.classifier = nn.Linear(1024, self.n_classes)
             #   
         elif self.training_type == 'vgg19':
             # self.model = models.__dict__['vgg'](num_classes = 5)
@@ -64,11 +78,15 @@ class Trainer:
             self.model = densenet121(weights='DEFAULT', drop_rate=self.drop_rate)
             self.model.classifier = nn.Linear(1024, self.n_classes)
         self.model = self.model.to(self.device)
-
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, betas=(self.beta1, self.beta2))
+        if self.training_type == 'dam':
+            self.optimizer = None
+        else:
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, betas=(self.beta1, self.beta2))
         self.sigmoid = nn.Sigmoid()
-
-        self.metrics = AUC()
+        if 1:
+            self.metrics = AUC()
+        else:
+            self.metrics = auc_roc_score
         self.early_stopping = EarlyStopping(args)
 
         self.train_losses = []
@@ -86,26 +104,10 @@ class Trainer:
         self.loss_batch_df = pd.DataFrame(columns=['custom loss','cross entropy','class distinctiveness','spatial coherence'])
 
     def train_one_epoch(self):
-        self.model.train()
-        
+        self.model.train()        
         losses = []
         y_true = torch.tensor([]).to(self.device)
         y_pred = torch.tensor([]).to(self.device)  
-        if self.training_type=='dam':     
-            self.wceloss=False       
-            self.damLoss = AUCMLoss()
-            """
-            self.optimizer = PESG(self.model, 
-                            a=self.damLoss.a, 
-                            b=self.damLoss.b, 
-                            alpha=self.damLoss.alpha, 
-                            imratio=None, 
-                            lr=0.1, 
-                            gamma=0.9,            
-                            epoch_decay = None                                                 
-                            )            
-            """                  
-            
         for inputs, targets in tqdm(self.train_loader):            
             self.optimizer.zero_grad()                    
             inputs = inputs.to(self.device)                        
@@ -192,6 +194,7 @@ class Trainer:
 
                 if self.data == 'breastmnist':
                     targets = one_hot(targets, num_classes=2)
+                    
                 targets = torch.squeeze(targets, 1)
 
                 data_hist = np.zeros(self.n_classes)
@@ -201,7 +204,7 @@ class Trainer:
                 data_hist /= self.train_loader.batch_size
                 ce_weights = torch.Tensor(data_hist).to(self.device)
                 criterion = nn.BCEWithLogitsLoss(weight=ce_weights)
-                damLoss = AUCMLoss(imratio=None)                
+                # damLoss = AUCM_MultiLabel(num_classes=5)             
                 targets = targets.float()
                 targets = targets.to(self.device)
 
@@ -209,7 +212,7 @@ class Trainer:
                     wceloss = criterion(outputs, targets)
                     loss = loss + wceloss
                 if self.training_type=='dam':
-                    damLossVal = damLoss(outputs, targets)
+                    damLossVal = self.damLoss(outputs, targets)
                     loss = loss + damLossVal
 
                 if self.focalloss:
@@ -249,12 +252,27 @@ class Trainer:
         self.val_aucs.append(self.metrics(y_pred, y_true))
 
     def train(self, train_loader, val_loader, epochs):
+        if self.training_type=='dam':            
+            self.wceloss=False       
+            self.damLoss = AUCM_MultiLabel(num_classes=5)            
+            lr = 0.1 
+            epoch_decay = 2e-3
+            weight_decay = 1e-5
+            margin = 1.0
+            self.optimizer = PESG(self.model, 
+                 loss_fn=self.damLoss,
+                 lr=lr, 
+                 margin=margin, 
+                 epoch_decay=epoch_decay, 
+                 weight_decay=weight_decay)        
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.epochs = epochs
         best_val_auc = 0
 
         for epoch in trange(self.epochs):
+            if epoch > 0:                
+                self.optimizer.update_regularizer(decay_factor = 2)
             self.train_one_epoch()
             self.evaluate()
             

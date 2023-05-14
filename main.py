@@ -21,13 +21,12 @@ def main(args):
         valid_csv = 'CheXpert-v1.0-small/valid.csv'
         train_data = CheXpertData(train_csv, mode='train')
         val_data = CheXpertData(valid_csv, mode='val')
-        train_data_subset = Subset(train_data, range(0, 45000))
+        #train_data_subset = Subset(train_data, range(0, 45000))
 
     if args.data == 'breastmnist':
         train_data, val_data, args.n_classes = get_data_medmnist('breastmnist')
-        train_data_subset = train_data
 
-    train_loader = DataLoader(train_data_subset,
+    train_loader = DataLoader(train_data,
                             drop_last=True,shuffle=True,
                             batch_size=args.batch_size, num_workers=32, pin_memory=True)
     val_loader = DataLoader(val_data,
@@ -45,8 +44,8 @@ def main(args):
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--epochs', default=15, type=int)
-    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--epochs', default=5, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--data', default='chexpert', type=str)
     parser.add_argument('--training_type', default='single-stage', type=str)
     parser.add_argument('--wceloss', default='True', type=str)
@@ -57,10 +56,11 @@ if __name__=='__main__':
     parser.add_argument('--cdloss_weight', default=1.4, type=float)
     parser.add_argument('--scloss', default='False', type=str)
     parser.add_argument('--scloss_weight', default=1.0, type=float)
-    parser.add_argument('--lr', default=0.0005, type=float)
+    parser.add_argument('--lr', default=1e-4, type=float)
     parser.add_argument('--beta1', default=0.9, type=float)
     parser.add_argument('--beta2', default=0.999, type=float)
     parser.add_argument('--drop_rate', default=0, type=float)
+    parser.add_argument('--wd', default=1e-5, type=float)
     parser.add_argument('--n_classes', default=5, type=int)
     parser.add_argument('--patience', default=7, type=int)
     parser.add_argument('--verbose', default='False', type=str)

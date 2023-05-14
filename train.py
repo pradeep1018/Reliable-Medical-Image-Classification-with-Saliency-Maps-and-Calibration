@@ -9,18 +9,20 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from captum.attr import LayerGradCam, LayerAttribution, LRP
 from tqdm import tqdm, trange
 from torchvision.models import densenet121
-from libauc.models import densenet121 as DenseNet121
-from libauc.metrics import auc_roc_score
 import torchvision.models as models
 import torch.utils.model_zoo as model_zoo
 import datetime
 import pytz
-
-from losses import ClassDistinctivenessLoss, SpatialCoherenceConv, sigmoid_focal_loss
 from libauc.losses import AUCM_MultiLabel
 from libauc.optimizers import PESG
+from libauc.models import densenet121 as DenseNet121
+from libauc.metrics import auc_roc_score
+from torchmetrics.classification import BinaryCalibrationError
+
+from losses import ClassDistinctivenessLoss, SpatialCoherenceConv, sigmoid_focal_loss
 from metrics import AUC
 from utils import EarlyStopping
+
 def decf(epoch):
     if epoch == 1:
         return 10
@@ -30,6 +32,7 @@ def decf(epoch):
         else:
             return 5
     return 2
+
 class Trainer:
     def __init__(self, args):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -88,11 +91,13 @@ class Trainer:
         else:
             self.metrics = auc_roc_score
         self.early_stopping = EarlyStopping(args)
+        self.ece = BinaryCalibrationError()
 
         self.train_losses = []
         self.val_losses = []
         self.train_aucs = []
         self.val_aucs = []
+        self.ece_vals = []
 
         self.loss_df = pd.DataFrame(columns=['Training Loss','Validation Loss'])
         if args.data=='chexpert':
@@ -102,6 +107,7 @@ class Trainer:
             self.train_auc_df = pd.DataFrame(columns=['class1','class2','Mean'])
             self.val_auc_df = pd.DataFrame(columns=['class1','class2','Mean'])
         self.loss_batch_df = pd.DataFrame(columns=['custom loss','cross entropy','class distinctiveness','spatial coherence'])
+        self.ece_val_df = pd.DataFrame(columns=['Atelectasis','Cardiomegaly','Consolidation','Edema','Plural Effusion','Mean'])
 
     def train_one_epoch(self):
         self.model.train()        
@@ -250,6 +256,10 @@ class Trainer:
 
         self.val_losses.append(sum(losses) / len(losses))
         self.val_aucs.append(self.metrics(y_pred, y_true))
+        ece_list = []
+        for i in range(self.n_classes):
+            ece_list.append(self.ece(y_pred[:,i], y_true[:,i]).cpu().detach().numpy())
+        self.ece_vals.append(torch.from_numpy(np.array(ece_list)))
 
     def train(self, train_loader, val_loader, epochs):
         if self.training_type=='dam':            
@@ -272,13 +282,13 @@ class Trainer:
 
         for epoch in trange(self.epochs):
             if epoch > 0:                
-                self.optimizer.update_regularizer(decay_factor = 2)
+                self.optimizer.update_regularizer(decay_factor = 10)
             self.train_one_epoch()
             self.evaluate()
             
-            print("Epoch {0}: Training Loss = {1}, Validation Loss = {2}, Average Training AUC = {3}, Average Validation AUC = {4}".
-            format(epoch+1, self.train_losses[-1], self.val_losses[-1], 
-            sum(self.train_aucs[-1])/self.n_classes, sum(self.val_aucs[-1])/self.n_classes))
+            print("Epoch {0}: Training Loss = {1}, Validation Loss = {2}, Average Training AUC = {3}, Average Validation AUC = {4}, Average Calibration Error = {5}"
+            .format(epoch+1, self.train_losses[-1], self.val_losses[-1], 
+            sum(self.train_aucs[-1])/self.n_classes, sum(self.val_aucs[-1])/self.n_classes, sum(self.ece_vals[-1])/self.n_classes))
 
             losses = [self.train_losses[-1], self.val_losses[-1]]
             self.loss_df.loc['Epoch {}'.format(epoch+1)] = np.array(losses)
@@ -287,6 +297,11 @@ class Trainer:
             train_auc = train_auc.tolist()
             train_auc.append(sum(train_auc)/len(train_auc))
             self.train_auc_df.loc['Epoch {}'.format(epoch+1)] = train_auc
+
+            ece_val = self.ece_vals[-1]
+            ece_val = ece_val.tolist()
+            ece_val.append(sum(ece_val)/len(ece_val))
+            self.ece_val_df.loc['Epoch {}'.format(epoch+1)] = ece_val
 
             val_auc = self.val_aucs[-1]
             val_auc = val_auc.tolist()
@@ -357,4 +372,5 @@ class Trainer:
             self.val_auc_df.to_csv('results/{}_{}_val_auc_wce_{}.csv'.format(self.data, self.cdloss_weight, time))
             with open("output.txt", "a") as f:
                 print("Best val accuracy with cdloss weight = {} is {}".format(self.cdloss_weight, best_val_auc), file=f)
+        self.ece_val_df.to_csv('results/{}_ece_val_{}_{}.csv'.format(self.data, self.lossfn, time))
         

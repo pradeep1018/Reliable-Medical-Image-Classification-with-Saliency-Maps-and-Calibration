@@ -1,4 +1,4 @@
-,Best val accuracy with cdloss weight = 1 is 0.7107655208421484
+Best val accuracy with cdloss weight = 1 is 0.7107655208421484
 Best val accuracy with cdloss weight = 2 is 0.7404931348957963
 Best val accuracy with cdloss weight = 4 is 0.7150739539047747
 Best val accuracy with cdloss weight = 5 is 0.7238039448916921

@@ -22,7 +22,7 @@ valid_csv = 'CheXpert-v1.0-small/valid.csv'
 train_data = CheXpertData(train_csv, mode='train')
 val_data = CheXpertData(valid_csv, mode='train') #changed to train mode
 
-img_ind = 244
+img_ind = 600
 qimg = train_data[img_ind][0]
 qimg_label = train_data[img_ind][1]
 print(qimg_label)

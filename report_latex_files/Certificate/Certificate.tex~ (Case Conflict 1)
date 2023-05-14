@@ -1,0 +1,17 @@
+% Project Certificate ------------------------------------------------
+
+
+
+\begin{certificate}      %this creates the heading for the certificate
+
+It is certified that the work contained in this report titled “Title of the Project" is the original work done by Author-1(Entry-No), Author-2 (Entry-No), and has been carried out under my supervision.
+
+\end{certificate}
+
+
+% ------------------------------------------------------------------------
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "../thesis"
+%%% End: 

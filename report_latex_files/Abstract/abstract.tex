@@ -1,0 +1,31 @@
+
+% Thesis Abstract -----------------------------------------------------
+
+
+%\begin{abstractslong}    %uncommenting this line, gives a different abstract heading
+\begin{abstracts}        %this creates the heading for the abstract page
+
+In recent years, we observe tremendous performance of deep learning models in
+image classification and analysis. However, it is becoming increasingly harder to
+understand the rationale behind the decisions taken by a model due to their
+complexity in terms of the number of parameters, the depth, the arrangement of
+layers and the connections between layers. In the field of medical image analysis, it
+is important that the models learn the right set of features and ensure that the learnt
+features are relevant to the diagnosis. We attempt to learn the features better by
+inducing bias that ensures that the learned features generate more distinctive and
+spatially coherent saliency maps for different class labels of trained models. We
+induce bias by integrating two loss functions along with weighted cross entropy
+loss called class distinctiveness loss and spatial coherence loss. We used DenseNet-121 as our baseline network, however we experimented with various neural network architectures such as ResNet-101 and VGG-19 to determine the best architecture for our task. We also incorporated other losses functions such as Focal Loss and Deep AUC Maximaztion instead of cross entropy loss in order to address the class imbalance problem. We studied how calibrated our trained models are under different experiment settings. Finally, we calibrated the models using Temperature Scaling and obtained better model probabilities which closely represented the ground truth distribution. 
+
+
+\end{abstracts}
+%\end{abstractlongs}
+
+
+% ----------------------------------------------------------------------
+
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: "../thesis"
+%%% End: 
